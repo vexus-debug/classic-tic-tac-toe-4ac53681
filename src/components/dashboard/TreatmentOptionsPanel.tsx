@@ -29,9 +29,10 @@ interface Props {
   fmt: (n: number) => string;
   onToggleItem: (item: any, done: boolean) => void;
   busy?: boolean;
+  basePath?: string;
 }
 
-export function TreatmentOptionsPanel({ plans, orgId, patientId, canEdit, fmt, onToggleItem, busy }: Props) {
+export function TreatmentOptionsPanel({ plans, orgId, patientId, canEdit, fmt, onToggleItem, busy, basePath = "/dashboard" }: Props) {
   const qc = useQueryClient();
   const [working, setWorking] = useState<string | null>(null);
   const { data: consents = [] } = usePatientConsentForms(patientId);
@@ -207,7 +208,7 @@ export function TreatmentOptionsPanel({ plans, orgId, patientId, canEdit, fmt, o
                                     {it.tooth_number && <span className="ml-1 text-xs text-muted-foreground">· tooth {it.tooth_number}</span>}
                                     {consentCategory(it.description) && (hasSignedConsent(it, consents)
                                       ? <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]"><ShieldCheck className="h-2.5 w-2.5 mr-0.5" />consent signed</Badge>
-                                      : <Link to={`../consent-forms?patientId=${patientId}&new=1&template=${encodeURIComponent(consentCategory(it.description)!)}`} relative="path">
+                                      : <Link to={`${basePath}/consent-forms?patientId=${patientId}&new=1&template=${encodeURIComponent(consentCategory(it.description)!)}`}>
                                           <Badge variant="destructive" className="ml-1 h-4 px-1 text-[10px]"><ShieldAlert className="h-2.5 w-2.5 mr-0.5" />sign consent</Badge>
                                         </Link>)}
                                     {isInvoiced(it) && <Badge variant="outline" className="ml-1 h-4 px-1 text-[10px]">invoiced</Badge>}
