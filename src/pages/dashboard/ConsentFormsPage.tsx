@@ -34,6 +34,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { motion } from "framer-motion";
 import { SignaturePad } from "@/components/dashboard/SignaturePad";
 import { buildConsentPdf, urlToDataUrl } from "@/lib/consentPdf";
+import { fillSmartTags, sha256Hex, SMART_TAGS } from "@/lib/consentSmartTags";
 
 const statusIcons: Record<string, any> = {
   pending: Clock,
@@ -70,6 +71,10 @@ export default function ConsentFormsPage() {
   const [signerName, setSignerName] = useState("");
   const [signature, setSignature] = useState<string | null>(null);
   const [signing, setSigning] = useState(false);
+  const [signerRelation, setSignerRelation] = useState("Self");
+  const [clinicianName, setClinicianName] = useState("");
+  const [clinicianLicense, setClinicianLicense] = useState("");
+  const [clinicianSig, setClinicianSig] = useState<string | null>(null);
   const selectedForm: any = forms.find((f: any) => f.id === selectedFormId);
   const [uploadPatientId, setUploadPatientId] = useState("");
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -223,14 +228,17 @@ export default function ConsentFormsPage() {
   };
 
   const handleSign = async () => {
-    if (!selectedFormId || !signerName) return;
+    if (!selectedFormId || !signerName || !signature || !clinicianName || !clinicianSig) return;
     setSigning(true);
     try {
-      if (signature && selectedForm) {
+      if (selectedForm) {
         const { data: org } = await (supabase as any).from("organizations").select("name, address, phone, email, logo_url").eq("id", currentOrg?.org_id).single();
         const patientName = `${selectedForm.patients?.first_name || ""} ${selectedForm.patients?.last_name || ""}`.trim();
         const date = new Date().toLocaleDateString();
+        const timestamp = new Date().toISOString();
+        const hash = await sha256Hex([selectedForm.id, selectedForm.title, selectedForm.content, signerName, clinicianName, timestamp, signature, clinicianSig].join("|"));
         const blob = buildConsentPdf({
+          signerRelation, clinicianName, clinicianLicense, clinicianSignatureDataUrl: clinicianSig, timestamp, hash,
           clinic: { name: org?.name || currentOrg?.org_name || "Clinic", address: org?.address, phone: org?.phone, email: org?.email, logoDataUrl: await urlToDataUrl(org?.logo_url) },
           title: selectedForm.title,
           content: selectedForm.content || "",
@@ -246,6 +254,7 @@ export default function ConsentFormsPage() {
           title: `Signed: ${selectedForm.title}`,
           category: "signed_consent",
           userId: user?.id,
+          notes: `Locked ${timestamp} · SHA-256 ${hash}`,
         });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
@@ -257,6 +266,8 @@ export default function ConsentFormsPage() {
       setSignDialogOpen(false);
       setSignerName("");
       setSignature(null);
+      setClinicianSig(null);
+      setSignerRelation("Self");
       setJustSigned(selectedForm?.patient_id || ctxPatientId || null);
     } catch (err: any) {
       toast({ title: "Could not sign", description: err.message, variant: "destructive" });
@@ -317,7 +328,9 @@ export default function ConsentFormsPage() {
       }
       if (cancelled || !keyword) return;
       const t = templates.find((t: any) => t.is_active && t.title?.toLowerCase().includes(keyword!.toLowerCase()));
-      if (t) setConsentForm((f) => (f.templateId ? f : { ...f, templateId: t.id, title: t.title, content: t.content }));
+      if (!t) return;
+      const content = await fillForPatient(t.content, consentForm.patientId);
+      if (!cancelled) setConsentForm((f) => (f.templateId ? f : { ...f, templateId: t.id, title: t.title, content }));
     })();
     return () => { cancelled = true; };
   }, [formDialogOpen, consentForm.patientId, templates.length]);
@@ -531,7 +544,7 @@ export default function ConsentFormsPage() {
       </Dialog>
 
       {/* Sign Dialog */}
-      <Dialog open={signDialogOpen} onOpenChange={(o) => { setSignDialogOpen(o); if (!o) setSignature(null); }}>
+      <Dialog open={signDialogOpen} onOpenChange={(o) => { setSignDialogOpen(o); if (!o) { setSignature(null); setClinicianSig(null); } else if (!clinicianName) setClinicianName((user?.user_metadata as any)?.full_name || ""); }}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Sign Consent Form</DialogTitle></DialogHeader>
           <div className="space-y-3">
@@ -541,14 +554,30 @@ export default function ConsentFormsPage() {
                 <p className="text-xs whitespace-pre-wrap text-muted-foreground">{selectedForm.content}</p>
               </ScrollArea>
             )}
-            <div className="space-y-1"><Label className="text-xs">Signer Full Name *</Label><Input value={signerName} onChange={e => setSignerName(e.target.value)} /></div>
-            <div className="space-y-1"><Label className="text-xs">Signature</Label><SignaturePad onChange={setSignature} /></div>
-            {signature && <p className="text-[11px] text-muted-foreground">A PDF with your clinic details and this signature will be saved to the patient's documents and downloaded.</p>}
-            <p className="text-xs text-muted-foreground">By clicking "Sign", you confirm the patient has reviewed and agreed to the consent form.</p>
+            <div className="rounded-md border p-3 space-y-2">
+              <p className="text-xs font-semibold">1. Patient or legal guardian</p>
+              <div className="grid grid-cols-[1fr_auto] gap-2">
+                <Input placeholder="Full name *" value={signerName} onChange={e => setSignerName(e.target.value)} />
+                <Select value={signerRelation} onValueChange={setSignerRelation}>
+                  <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+                  <SelectContent>{["Self", "Parent", "Guardian", "Spouse", "Next of kin"].map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <SignaturePad onChange={setSignature} />
+            </div>
+            <div className="rounded-md border p-3 space-y-2">
+              <p className="text-xs font-semibold">2. Attending dentist countersignature</p>
+              <div className="grid grid-cols-2 gap-2">
+                <Input placeholder="Dentist name *" value={clinicianName} onChange={e => setClinicianName(e.target.value)} />
+                <Input placeholder="Reg. no (e.g. MDCN)" value={clinicianLicense} onChange={e => setClinicianLicense(e.target.value)} />
+              </div>
+              <SignaturePad onChange={setClinicianSig} />
+            </div>
+            <p className="text-[11px] text-muted-foreground">Both signatures are required. Signing locks the form into a timestamped PDF with a tamper-check code, saves it to the patient's documents and downloads a copy.</p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setSignDialogOpen(false)}>Cancel</Button>
-            <Button onClick={() => void handleSign()} className="bg-secondary hover:bg-secondary/90" disabled={signing || !signerName}>{signing ? "Signing..." : signature ? "Sign & save PDF" : "Sign"}</Button>
+            <Button onClick={() => void handleSign()} className="bg-secondary hover:bg-secondary/90" disabled={signing || !signerName || !signature || !clinicianName || !clinicianSig}>{signing ? "Locking..." : "Sign & lock PDF"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
