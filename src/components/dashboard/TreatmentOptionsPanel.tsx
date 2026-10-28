@@ -11,7 +11,10 @@ import { toast } from "@/hooks/use-toast";
 import { PHASES } from "@/lib/dentalPhases";
 import { ACCEPTANCE, itemPhase, nextOptionLabel, splitCost, type Acceptance } from "@/lib/treatmentOptions";
 import { isInvoiced } from "@/hooks/useVisitFlow";
-import { Copy, Receipt } from "lucide-react";
+import { Copy, Receipt, ShieldAlert, ShieldCheck } from "lucide-react";
+import { Link } from "react-router-dom";
+import { usePatientConsentForms } from "@/hooks/useConsentForms";
+import { consentCategory, hasSignedConsent } from "@/lib/consentSmartTags";
 
 const db = supabase as any;
 const ACC_VARIANT: Record<Acceptance, "default" | "secondary" | "outline" | "destructive"> = {
@@ -31,6 +34,14 @@ interface Props {
 export function TreatmentOptionsPanel({ plans, orgId, patientId, canEdit, fmt, onToggleItem, busy }: Props) {
   const qc = useQueryClient();
   const [working, setWorking] = useState<string | null>(null);
+  const { data: consents = [] } = usePatientConsentForms(patientId);
+  const toggle = (it: any, isDone: boolean) => {
+    if (!isDone && !hasSignedConsent(it, consents)) {
+      const ok = window.confirm(`No signed ${consentCategory(it.description)} consent covers "${it.description}"${it.tooth_number ? ` on tooth ${it.tooth_number}` : ""}. Mark it done anyway?`);
+      if (!ok) return;
+    }
+    onToggleItem(it, isDone);
+  };
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["patient-treatment-plans", patientId] });
     qc.invalidateQueries({ queryKey: ["treatment-plans"] });
@@ -189,11 +200,16 @@ export function TreatmentOptionsPanel({ plans, orgId, patientId, canEdit, fmt, o
                               return (
                                 <li key={it.id} className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
                                   <input type="checkbox" checked={isDone} disabled={!canEdit || busy}
-                                    onChange={() => onToggleItem(it, isDone)}
+                                    onChange={() => toggle(it, isDone)}
                                     aria-label={`Mark ${it.description} ${isDone ? "not done" : "done"}`} className="h-4 w-4 accent-primary" />
                                   <span className={`flex-1 min-w-[8rem] ${isDone ? "line-through text-muted-foreground" : ""}`}>
                                     {it.description}
                                     {it.tooth_number && <span className="ml-1 text-xs text-muted-foreground">· tooth {it.tooth_number}</span>}
+                                    {consentCategory(it.description) && (hasSignedConsent(it, consents)
+                                      ? <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]"><ShieldCheck className="h-2.5 w-2.5 mr-0.5" />consent signed</Badge>
+                                      : <Link to={`../consent-forms?patientId=${patientId}&new=1&template=${encodeURIComponent(consentCategory(it.description)!)}`} relative="path">
+                                          <Badge variant="destructive" className="ml-1 h-4 px-1 text-[10px]"><ShieldAlert className="h-2.5 w-2.5 mr-0.5" />sign consent</Badge>
+                                        </Link>)}
                                     {isInvoiced(it) && <Badge variant="outline" className="ml-1 h-4 px-1 text-[10px]">invoiced</Badge>}
                                   </span>
                                   {canEdit && (

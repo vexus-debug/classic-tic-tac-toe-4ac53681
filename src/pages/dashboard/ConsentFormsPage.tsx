@@ -533,6 +533,7 @@ export default function ConsentFormsPage() {
                 </Button>
               </div>
               <Textarea value={consentForm.content} onChange={e => setConsentForm(f => ({ ...f, content: e.target.value }))} rows={6} />
+              <p className="text-[11px] text-muted-foreground">Auto-filled tags: {SMART_TAGS.map(t => `{{${t}}}`).join(" ")}</p>
               <p className="text-[11px] text-muted-foreground">Pick a patient and title first. Review AI-added risks before saving.</p>
             </div>
           </div>
