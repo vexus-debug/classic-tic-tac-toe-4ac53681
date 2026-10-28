@@ -6,11 +6,17 @@ export interface ConsentPdfInput {
   content: string;
   patientName: string;
   signerName: string;
+  signerRelation?: string;
   signatureDataUrl: string;
+  clinicianName?: string;
+  clinicianLicense?: string;
+  clinicianSignatureDataUrl?: string | null;
   date: string;
+  timestamp?: string;
+  hash?: string;
 }
 
-/** Builds a signed consent PDF with clinic letterhead and the patient's signature. */
+/** Builds a signed, locked consent PDF with letterhead, both signatures and a tamper-evident hash footer. */
 export function buildConsentPdf(d: ConsentPdfInput): Blob {
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const W = doc.internal.pageSize.getWidth();
@@ -39,19 +45,30 @@ export function buildConsentPdf(d: ConsentPdfInput): Blob {
   doc.setTextColor(17).setFontSize(10.5);
   const lines = doc.splitTextToSize(d.content || "", W - M * 2);
   for (const line of lines) {
-    if (y > H - 170) { doc.addPage(); y = M; }
+    if (y > H - 200) { doc.addPage(); y = M; }
     doc.text(line, M, y);
     y += 14;
   }
 
-  if (y > H - 170) { doc.addPage(); y = M; }
+  if (y > H - 200) { doc.addPage(); y = M; }
   y += 24;
-  doc.addImage(d.signatureDataUrl, "PNG", M, y, 180, 60);
-  y += 66;
-  doc.setDrawColor(60).line(M, y, M + 220, y);
-  doc.setFontSize(10).text(`Signed by: ${d.signerName}`, M, y + 14);
-  doc.text(`Date: ${d.date}`, M, y + 28);
+  const colW = (W - M * 2) / 2;
+  const block = (x: number, img: string | null | undefined, l1: string, l2?: string) => {
+    if (img) doc.addImage(img, "PNG", x, y, 180, 60);
+    doc.setDrawColor(60).line(x, y + 66, x + 220, y + 66);
+    doc.setFontSize(10).setTextColor(17).text(l1, x, y + 80);
+    if (l2) doc.setTextColor(90).text(l2, x, y + 94);
+  };
+  block(M, d.signatureDataUrl, `Patient / Guardian: ${d.signerName}`, d.signerRelation && d.signerRelation !== "Self" ? `Relationship: ${d.signerRelation}` : undefined);
+  if (d.clinicianName) block(M + colW, d.clinicianSignatureDataUrl, `Dentist: ${d.clinicianName}`, d.clinicianLicense ? `Reg. no: ${d.clinicianLicense}` : undefined);
 
+  // Tamper-evident footer on every page.
+  const pages = doc.getNumberOfPages();
+  for (let p = 1; p <= pages; p++) {
+    doc.setPage(p);
+    doc.setFontSize(7).setTextColor(120);
+    doc.text(`Locked ${d.timestamp || d.date}${d.hash ? `  ·  SHA-256 ${d.hash}` : ""}  ·  Page ${p}/${pages}`, M, H - 24);
+  }
   return doc.output("blob");
 }
 
