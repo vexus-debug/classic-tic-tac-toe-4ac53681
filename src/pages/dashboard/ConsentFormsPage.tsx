@@ -190,10 +190,35 @@ export default function ConsentFormsPage() {
     });
   };
 
-  const handleSelectTemplate = (templateId: string) => {
+  // Auto-populate smart tags from the patient, clinician and open treatment plan.
+  const fillForPatient = async (content: string, patientId: string) => {
+    const p: any = patients.find((x: any) => x.id === patientId);
+    const db = supabase as any;
+    const { data: plans } = patientId
+      ? await db.from("treatment_plans").select("plan_name, option_label, acceptance_status, status, treatment_plan_items(description, tooth_number, estimated_cost, status)")
+          .eq("org_id", currentOrg?.org_id).eq("patient_id", patientId).neq("status", "cancelled")
+      : { data: [] };
+    const all = plans || [];
+    const main = all.find((x: any) => x.acceptance_status === "accepted") || all.find((x: any) => x.status === "active") || all[0];
+    const items = (main?.treatment_plan_items || []).filter((i: any) => i.status !== "completed" && i.status !== "skipped");
+    const alts = all.filter((x: any) => x !== main && x.option_label).map((x: any) => `Option ${x.option_label}: ${(x.treatment_plan_items || []).map((i: any) => i.description).join(", ")}`);
+    return fillSmartTags(content, {
+      patient_name: p ? `${p.first_name} ${p.last_name}` : undefined,
+      procedure_name: items.map((i: any) => i.description).join(", ") || undefined,
+      tooth_numbers: [...new Set(items.map((i: any) => i.tooth_number).filter(Boolean))].join(", ") || undefined,
+      clinician_name: (user?.user_metadata as any)?.full_name || undefined,
+      alternative_treatments: alts.join("; ") || undefined,
+      total_cost: items.length ? items.reduce((s: number, i: any) => s + Number(i.estimated_cost || 0), 0).toLocaleString() : undefined,
+      clinic_name: currentOrg?.org_name,
+      date: new Date().toLocaleDateString(),
+    });
+  };
+
+  const handleSelectTemplate = async (templateId: string) => {
     const t = templates.find((t: any) => t.id === templateId);
     if (t) {
-      setConsentForm(f => ({ ...f, templateId, title: t.title, content: t.content }));
+      const content = await fillForPatient(t.content, consentForm.patientId);
+      setConsentForm(f => ({ ...f, templateId, title: t.title, content }));
     }
   };
 
