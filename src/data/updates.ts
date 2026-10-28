@@ -13,6 +13,18 @@ export interface UpdateEntry {
 
 export const updates: UpdateEntry[] = [
   {
+    version: "v2.12.0",
+    date: "October 28, 2026",
+    title: "Treatment options A, B and C on the patient file",
+    kind: "feature",
+    items: [
+      { kind: "feature", text: "Offer competing treatment options side by side and mark each as proposed, accepted, declined or referred." },
+      { kind: "feature", text: "Procedures are grouped into four treatment phases, which you can change per procedure." },
+      { kind: "feature", text: "Enter the insurer and coverage to see what insurance pays and what the patient pays." },
+      { kind: "feature", text: "Invoice all finished procedures in a phase with one tap." },
+    ],
+  },
+  {
     version: "v2.11.0",
     date: "October 28, 2026",
     title: "Full gum chart with 6-point probing",
