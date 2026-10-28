@@ -13,6 +13,19 @@ export interface UpdateEntry {
 
 export const updates: UpdateEntry[] = [
   {
+    version: "v2.13.0",
+    date: "October 28, 2026",
+    title: "Smarter consent forms with patient and dentist signatures",
+    kind: "feature",
+    items: [
+      { kind: "feature", text: "Consent forms fill in the patient, procedure, teeth, dentist, alternatives and cost for you." },
+      { kind: "feature", text: "Patient or guardian signs, then the dentist countersigns, on the same screen." },
+      { kind: "feature", text: "Signed forms are locked into a timestamped PDF with a tamper-check code and saved to the patient file." },
+      { kind: "feature", text: "Treatment plans show which procedures still need a signed consent, with a one-tap shortcut to sign it." },
+      { kind: "improvement", text: "You are warned before marking an extraction, root canal, implant, crown or brace procedure done without consent." },
+    ],
+  },
+  {
     version: "v2.12.0",
     date: "October 28, 2026",
     title: "Treatment options A, B and C on the patient file",
